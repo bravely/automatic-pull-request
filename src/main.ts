@@ -3,8 +3,9 @@ import {wait} from './wait'
 import * as IO from 'fp-ts/IO'
 import * as T from 'fp-ts/Task'
 import * as O from 'fp-ts/Option'
+import * as E from 'fp-ts/Either'
 import * as TE from 'fp-ts/TaskEither'
-import { pipe, flow } from 'fp-ts/function'
+import { pipe, constVoid, flow } from 'fp-ts/function'
 
 import * as core from './fp-actions/core'
 
@@ -26,22 +27,30 @@ async function run(): Promise<void> {
 const main: T.Task<void> =
   pipe(
     core.getInput('milliseconds'),
-    IO.chainFirst((ms) => {
-      core.debug(`Waiting ${ms} milliseconds ...`)
-      return core.debug(new Date().toTimeString())
+    IO.bindTo('msOption'),
+    IO.bind('_debugWaiting', ({msOption}) => {
+      if (O.isSome(msOption)) {
+        return core.debug(`Waiting ${msOption.value} milliseconds ...`)
+      } else {
+        return constVoid
+      }
     }),
-    T.fromIO,
-    T.chain(flow(
+    IO.bind('_debugBefore', () => core.debug(new Date().toTimeString())),
+    IO.map(({ msOption }) => pipe(
+      msOption,
       O.map((ms) => parseInt(ms, 10)),
-      TE.fromOption(() => new Error('milliseconds arg required')),
-      TE.chain(wait),
-      TE.chain(() => {
-        core.debug(new Date().toTimeString())
-        return TE.fromIO(core.setOutput('time', new Date().toTimeString()))
-      }),
-      TE.mapLeft((e) => { core.setFailed(e.message) }),
-      TE.toUnion
-    ))
+      E.fromOption(() => new Error('milliseconds arg required'))
+    )),
+    TE.fromIOEither,
+    TE.chain(wait),
+    TE.chain(() => pipe(
+      core.debug(new Date().toTimeString()),
+      IO.chain(() => core.setOutput('time', new Date().toTimeString())),
+      (io) => TE.fromIO<void, Error>(io)
+    )),
+    TE.orElse((e) => TE.fromIO(core.setFailed(e.message))),
+    TE.mapLeft(constVoid),
+    TE.toUnion
   )
 
 
