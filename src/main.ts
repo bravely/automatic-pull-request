@@ -24,7 +24,8 @@ async function run(): Promise<void> {
   }
 }
 
-const main: T.Task<void> =
+// Fixme: Try refactoring this so the core.debug code is passed into the 'business logic'
+const main: T.Task<never> =
   pipe(
     core.getInput('milliseconds'),
     IO.bindTo('msOption'),
